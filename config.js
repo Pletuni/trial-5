@@ -1,7 +1,7 @@
 if (!window.RELY_CONFIG) {
     const CONFIG = {
         ENV: 'development',
-        DEFAULT_KEY: 'bbc54f4570b95072dad46029b762b984ec4204b56645ed4aca67e2cf68e9e741',
+        DEFAULT_KEY: 'bbc54f4570b95072dad46029b762b984ec4204b56645ed4aca67e2cf68e9e741', // Change this in the UI
         PRODUCTION_KEY: 'your_production_key_here_256_bit_hex',
         SETTINGS: {
             ENCRYPTION_MARKER: '[ENCRYPTED]',

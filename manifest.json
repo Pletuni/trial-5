@@ -1,0 +1,36 @@
+{
+    "manifest_version": 3,
+    "name": "RelyHealth Email Cipher",
+    "version": "1.0.0",
+    "description": "Automatically encrypt/decrypt Gmail emails while preserving Google Meet links",
+    "permissions": [
+        "storage",
+        "activeTab",
+        "scripting",
+        "tabs",
+        "notifications"
+    ],
+    "host_permissions": [
+        "https://mail.google.com/*"
+    ],
+    "background": {
+        "service_worker": "background.js"
+    },
+    "content_scripts": [
+        {
+            "matches": ["https://mail.google.com/*"],
+            "js": ["initGuard.js", "config.js", "relyCipher.js", "emailCipher.js", "contentManager.js"],
+            "run_at": "document_end"
+        }
+    ],
+    "action": {
+        "default_popup": "popup.html",
+        "default_title": "RelyHealth Email Cipher"
+    },
+    "web_accessible_resources": [
+        {
+            "resources": ["initGuard.js", "relyCipher.js", "config.js", "emailCipher.js", "fileProcessor.js", "xlsxHandler.js"],
+            "matches": ["https://mail.google.com/*"]
+        }
+    ]
+}

@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RelyHealth Email Cipher</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+    <h2>RelyHealth Email Cipher</h2>
+    
+    <div class="section">
+        <label for="encryptionKey">Encryption Key (256-bit hex):</label>
+        <input type="text" id="encryptionKey" placeholder="Enter your 256-bit hex key">
+        <button id="generateKey">Generate New Key</button>
+        <button id="saveKey">Save Key</button>
+        <p id="keyStatus">Checking...</p>
+    </div>
+    
+    <div class="section">
+        <h3>Settings</h3>
+        <label><input type="checkbox" id="autoEncrypt"> Auto-Encrypt Outgoing Emails</label>
+        <label><input type="checkbox" id="autoDecrypt"> Auto-Decrypt Incoming Emails</label>
+        <label><input type="checkbox" id="preserveMeetLinks"> Preserve Google Meet Links</label>
+        <label><input type="checkbox" id="showNotifications"> Show Notifications</label>
+        <button id="saveSettings">Save Settings</button>
+    </div>
+    
+    <div class="section">
+        <h3>Usage Statistics</h3>
+        <p>Emails Encrypted: <span id="emailsEncrypted">0</span></p>
+        <p>Emails Decrypted: <span id="emailsDecrypted">0</span></p>
+        <p>Errors Encountered: <span id="errorsEncountered">0</span></p>
+    </div>
+    
+    <div class="section">
+        <p>Extension Status: <span id="status">Checking...</span></p>
+    </div>
+    
+    <button id="scanAndDecryptBtn" style="width:100%;margin:16px 0;padding:12px 0;font-size:16px;background:#1a73e8;color:white;border:none;border-radius:6px;cursor:pointer;">🔍 Scan & Decrypt Page</button>
+    
+    <div id="devPanel" style="display: none;">
+        <h3>Developer Tools</h3>
+        <div>
+            <label for="testInput">Test Input:</label>
+            <textarea id="testInput" rows="4" placeholder="Enter text to encrypt/decrypt"></textarea>
+        </div>
+        <div>
+            <label for="testKey">Test Key (leave empty to use current key):</label>
+            <input type="text" id="testKey" placeholder="Optional 256-bit hex key">
+        </div>
+        <div>
+            <button id="encryptBtn">Encrypt</button>
+            <button id="decryptBtn">Decrypt</button>
+            <button id="copyResult">Copy Result</button>
+            <button id="previewResult">Preview HTML</button>
+        </div>
+        <div>
+            <label for="testOutput">Result:</label>
+            <textarea id="testOutput" rows="4" readonly></textarea>
+        </div>
+        <div>
+            <label><input type="checkbox" id="debugMode"> Enable Debug Logging</label>
+        </div>
+    </div>
+    
+    <div id="notification" class="notification" style="display: none;"></div>
+    
+    <script src="config.js"></script>
+    <script src="relyCipher.js"></script>
+    <script src="fileProcessor.js"></script>
+    <script src="xlsxHandler.js"></script>
+    <script src="popupManager.js"></script>
+    <script src="devPanel.js"></script>
+</body>
+</html>

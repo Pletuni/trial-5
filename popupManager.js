@@ -1,3 +1,5 @@
+import DOMPurify from 'dompurify';
+
 class PopupManager {
     constructor() {
         this.config = {
@@ -26,6 +28,7 @@ class PopupManager {
             await this.loadSettings();
             await this.loadStats();
             await this.checkStatus();
+            await this.restoreManualFields();
             this.setupEventListeners();
             
             if (window.RELY_CONFIG && window.RELY_CONFIG.ENV === 'production' && 
@@ -51,7 +54,6 @@ class PopupManager {
             document.getElementById('encryptionKey').value = this.encryptionKey;
             document.getElementById('autoEncrypt').checked = this.settings.AUTO_ENCRYPT;
             document.getElementById('autoDecrypt').checked = this.settings.AUTO_DECRYPT;
-            document.getElementById('preserveMeetLinks').checked = this.settings.PRESERVE_MEET_LINKS;
             document.getElementById('showNotifications').checked = this.settings.SHOW_NOTIFICATIONS;
             document.getElementById('debugMode').checked = this.settings.DEBUG_ENABLED;
             this.validateKeyInput(this.encryptionKey);
@@ -64,10 +66,9 @@ class PopupManager {
     async loadStats() {
         try {
             const result = await chrome.storage.sync.get(this.config.STORAGE_KEYS.STATS);
-            const stats = result[this.config.STORAGE_KEYS.STATS] || { encrypted: 0, decrypted: 0, errors: 0 };
+            const stats = result[this.config.STORAGE_KEYS.STATS] || { encrypted: 0, decrypted: 0 };
             document.getElementById('emailsEncrypted').textContent = stats.encrypted;
             document.getElementById('emailsDecrypted').textContent = stats.decrypted;
-            document.getElementById('errorsEncountered').textContent = stats.errors;
         } catch (error) {
             console.error('Error loading stats:', error);
         }
@@ -91,6 +92,20 @@ class PopupManager {
         document.getElementById('saveKey').addEventListener('click', () => this.saveKey());
         document.getElementById('saveSettings').addEventListener('click', () => this.saveSettings());
         document.getElementById('encryptionKey').addEventListener('input', (e) => this.validateKeyInput(e.target.value));
+        // Manual fields persistence
+        const manualEncryptInput = document.getElementById('manualEncryptInput');
+        const manualDecryptInput = document.getElementById('manualDecryptInput');
+        const manualKeyInput = document.getElementById('manualKeyInput');
+        const manualResult = document.getElementById('manualResult');
+        if (manualEncryptInput) manualEncryptInput.addEventListener('input', () => this.saveManualFields());
+        if (manualDecryptInput) manualDecryptInput.addEventListener('input', () => this.saveManualFields());
+        if (manualKeyInput) manualKeyInput.addEventListener('input', () => this.saveManualFields());
+        if (manualResult) manualResult.addEventListener('input', () => this.saveManualFields());
+        // Manual encrypt/decrypt buttons
+        const manualEncryptBtn = document.getElementById('manualEncryptBtn');
+        const manualDecryptBtn = document.getElementById('manualDecryptBtn');
+        if (manualEncryptBtn) manualEncryptBtn.addEventListener('click', () => this.handleManualEncrypt());
+        if (manualDecryptBtn) manualDecryptBtn.addEventListener('click', () => this.handleManualDecrypt());
     }
     
     async generateKey() {
@@ -136,7 +151,6 @@ class PopupManager {
             const settings = {
                 AUTO_ENCRYPT: document.getElementById('autoEncrypt').checked,
                 AUTO_DECRYPT: document.getElementById('autoDecrypt').checked,
-                PRESERVE_MEET_LINKS: document.getElementById('preserveMeetLinks').checked,
                 SHOW_NOTIFICATIONS: document.getElementById('showNotifications').checked,
                 DEBUG_ENABLED: document.getElementById('debugMode').checked
             };
@@ -178,6 +192,92 @@ class PopupManager {
         notification.className = `notification ${type}`;
         notification.style.display = 'block';
         setTimeout(() => notification.style.display = 'none', 3000);
+    }
+
+    async saveManualFields() {
+        const manualEncryptInput = document.getElementById('manualEncryptInput')?.value || '';
+        const manualDecryptInput = document.getElementById('manualDecryptInput')?.value || '';
+        const manualKeyInput = document.getElementById('manualKeyInput')?.value || '';
+        const manualResult = document.getElementById('manualResult')?.value || '';
+        await chrome.storage.local.set({
+            rely_manual_encrypt: manualEncryptInput,
+            rely_manual_decrypt: manualDecryptInput,
+            rely_manual_key: manualKeyInput,
+            rely_manual_result: manualResult
+        });
+    }
+    async restoreManualFields() {
+        const result = await chrome.storage.local.get([
+            'rely_manual_encrypt',
+            'rely_manual_decrypt',
+            'rely_manual_key',
+            'rely_manual_result'
+        ]);
+        if (document.getElementById('manualEncryptInput')) document.getElementById('manualEncryptInput').value = result.rely_manual_encrypt || '';
+        if (document.getElementById('manualDecryptInput')) document.getElementById('manualDecryptInput').value = result.rely_manual_decrypt || '';
+        if (document.getElementById('manualKeyInput')) document.getElementById('manualKeyInput').value = result.rely_manual_key || '';
+        if (document.getElementById('manualResult')) document.getElementById('manualResult').value = result.rely_manual_result || '';
+    }
+
+    async handleManualEncrypt() {
+        const input = document.getElementById('manualEncryptInput').value;
+        let key = document.getElementById('manualKeyInput').value.trim();
+        if (!key) key = this.encryptionKey;
+        const resultBox = document.getElementById('manualResult');
+        if (!key) {
+            resultBox.value = 'Error: No key provided';
+            return;
+        }
+        try {
+            const encrypted = await window.relyCipher.encryptText(input, key);
+            resultBox.value = encrypted;
+            this.saveManualFields();
+        } catch (error) {
+            resultBox.value = 'Error: ' + error.message;
+        }
+    }
+
+    async handleManualDecrypt() {
+        const input = document.getElementById('manualDecryptInput').value;
+        let key = document.getElementById('manualKeyInput').value.trim();
+        if (!key) key = this.encryptionKey;
+        const resultBox = document.getElementById('manualResult');
+        const resultHtml = document.getElementById('manualResultHtml');
+        if (!key) {
+            resultBox.value = 'Error: No key provided';
+            resultBox.style.display = '';
+            if (resultHtml) resultHtml.style.display = 'none';
+            return;
+        }
+        try {
+            const decrypted = await window.relyCipher.decryptText(input, key);
+            if (window.console) console.log('[RelyHealth Debug] Decrypted content:', decrypted);
+            // Remove emoji image URLs and loading fragments
+            function removeEmojiImgUrls(text) {
+                return text.replace(/https?:\/\/fonts\.gstatic\.com\/s\/e\/notoemoji\/[^\"]+\" loading=\"lazy\">/g, '').replace(/https?:\/\/fonts\.gstatic\.com\/s\/e\/notoemoji\/[^\"]+/g, '');
+            }
+            let cleaned = removeEmojiImgUrls(decrypted);
+            // Use linkifyHtml and DOMPurify for robust, safe HTML rendering (from window)
+            const safeHtml = window.DOMPurify.sanitize(window.linkifyHtml(cleaned, {
+                target: "_blank",
+                rel: "noopener noreferrer"
+            }));
+            if (resultHtml) {
+                resultHtml.innerHTML = safeHtml;
+                resultHtml.style.display = '';
+                resultBox.value = '';
+                resultBox.style.display = 'none';
+                if (window.console) console.log('[RelyHealth Debug] Rendered as HTML:', safeHtml);
+            } else {
+                resultBox.value = decrypted;
+                resultBox.style.display = '';
+            }
+            this.saveManualFields();
+        } catch (error) {
+            resultBox.value = 'Error: ' + error.message;
+            resultBox.style.display = '';
+            if (resultHtml) resultHtml.style.display = 'none';
+        }
     }
 }
 

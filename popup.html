@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="popup.css">
 </head>
 <body>
+    <img src="icons/icon128.png" alt="RelyHealth Logo" style="display:block;margin:0 auto 10px auto;width:64px;height:64px;">
     <h2>RelyHealth Email Cipher</h2>
     
     <div class="section">
@@ -19,10 +20,10 @@
     
     <div class="section">
         <h3>Settings</h3>
-        <label><input type="checkbox" id="autoEncrypt"> Auto-Encrypt Outgoing Emails</label>
+        <label><input type="checkbox" id="autoEncrypt"> Enable Encryption for Outgoing Emails</label>
         <label><input type="checkbox" id="autoDecrypt"> Auto-Decrypt Incoming Emails</label>
-        <label><input type="checkbox" id="preserveMeetLinks"> Preserve Google Meet Links</label>
         <label><input type="checkbox" id="showNotifications"> Show Notifications</label>
+        <label><input type="checkbox" id="debugMode"> Debug Mode</label>
         <button id="saveSettings">Save Settings</button>
     </div>
     
@@ -30,42 +31,47 @@
         <h3>Usage Statistics</h3>
         <p>Emails Encrypted: <span id="emailsEncrypted">0</span></p>
         <p>Emails Decrypted: <span id="emailsDecrypted">0</span></p>
-        <p>Errors Encountered: <span id="errorsEncountered">0</span></p>
     </div>
     
     <div class="section">
         <p>Extension Status: <span id="status">Checking...</span></p>
     </div>
     
-    <button id="scanAndDecryptBtn" style="width:100%;margin:16px 0;padding:12px 0;font-size:16px;background:#1a73e8;color:white;border:none;border-radius:6px;cursor:pointer;">🔍 Scan & Decrypt Page</button>
-    
-    <div id="devPanel" style="display: none;">
-        <h3>Developer Tools</h3>
+    <div id="manualPanel">
+        <h3>Manual Decryption and Encryption</h3>
         <div>
-            <label for="testInput">Test Input:</label>
-            <textarea id="testInput" rows="4" placeholder="Enter text to encrypt/decrypt"></textarea>
+            <label for="manualEncryptInput">Text to Encrypt:</label>
+            <textarea id="manualEncryptInput" rows="3" placeholder="Enter text to encrypt"></textarea>
         </div>
         <div>
-            <label for="testKey">Test Key (leave empty to use current key):</label>
-            <input type="text" id="testKey" placeholder="Optional 256-bit hex key">
+            <label for="manualDecryptInput">Text to Decrypt:</label>
+            <textarea id="manualDecryptInput" rows="3" placeholder="Paste encrypted text here"></textarea>
         </div>
         <div>
-            <button id="encryptBtn">Encrypt</button>
-            <button id="decryptBtn">Decrypt</button>
-            <button id="copyResult">Copy Result</button>
-            <button id="previewResult">Preview HTML</button>
+            <label for="manualKeyInput">Key (256-bit hex):</label>
+            <input type="text" id="manualKeyInput" placeholder="Enter 64-character hex key">
         </div>
-        <div>
-            <label for="testOutput">Result:</label>
-            <textarea id="testOutput" rows="4" readonly></textarea>
+        <div style="margin-top:10px;display:flex;gap:10px;">
+            <button id="manualEncryptBtn">Encrypt</button>
+            <button id="manualDecryptBtn">Decrypt</button>
         </div>
-        <div>
-            <label><input type="checkbox" id="debugMode"> Enable Debug Logging</label>
+        <div style="margin-top:10px;">
+            <label for="manualResult">Result:</label>
+            <textarea id="manualResult" rows="3" readonly></textarea>
+            <div id="manualResultHtml" style="margin-top:8px; border:1px solid #ccc; border-radius:4px; padding:8px; min-height:40px; background:#fafbfc; display:none;"></div>
         </div>
     </div>
+    <style>
+        #manualPanel textarea, #manualPanel input { width: 100%; box-sizing: border-box; }
+        #manualPanel button { padding: 6px 18px; font-size: 15px; border-radius: 5px; border: none; background: #1a73e8; color: white; cursor: pointer; }
+        #manualPanel button:hover { background: #155ab6; }
+    </style>
     
     <div id="notification" class="notification" style="display: none;"></div>
     
+    <script src="libs/linkify.min.js"></script>
+    <script src="libs/linkify-html.min.js"></script>
+    <script src="libs/purify.min.js"></script>
     <script src="config.js"></script>
     <script src="relyCipher.js"></script>
     <script src="fileProcessor.js"></script>

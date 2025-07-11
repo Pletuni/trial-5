@@ -105,20 +105,18 @@ if (!window.ContentManager) {
                 });
             });
             composeObserver.observe(document.body, { childList: true, subtree: true });
-            
+
+            // Enhanced content observer: on any mutation, re-check all [data-message-id] elements
             const contentObserver = new MutationObserver(mutations => {
-                mutations.forEach(mutation => {
-                    mutation.addedNodes.forEach(node => {
-                        if (node.nodeType === Node.ELEMENT_NODE && node.querySelector('[data-message-id]')) {
-                            this.emailCipher.processEmailContent(node);
-                            // Also add decrypt button for encrypted emails
-                            this.emailCipher.addDecryptButtonToEmail(node);
-                        }
-                    });
+                // On any mutation, process all visible email elements
+                const emailElements = document.querySelectorAll('[data-message-id]');
+                emailElements.forEach(emailElement => {
+                    this.emailCipher.processEmailContent(emailElement);
+                    this.emailCipher.addDecryptButtonToEmail(emailElement);
                 });
             });
-            contentObserver.observe(document.body, { childList: true, subtree: true });
-            
+            contentObserver.observe(document.body, { childList: true, subtree: true, characterData: true, subtree: true });
+
             document.addEventListener('click', event => {
                 if (this.emailCipher.isSendButton(event.target)) {
                     this.emailCipher.handleSendClick(event);

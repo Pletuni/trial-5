@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "dompurify": "^3.2.6",
+    "linkifyjs": "^4.3.1"
+  }
+}

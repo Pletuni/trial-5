@@ -11,6 +11,12 @@
     }
     
     function b64ToAb(base64) {
+        // Remove whitespace and line breaks
+        base64 = base64.replace(/\s+/g, '');
+        // Add padding if needed
+        while (base64.length % 4 !== 0) {
+            base64 += '=';
+        }
         return Uint8Array.from(atob(base64), c => c.charCodeAt(0)).buffer;
     }
     

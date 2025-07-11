@@ -9,7 +9,6 @@ class PopupManager {
             DEFAULT_SETTINGS: {
                 AUTO_ENCRYPT: true,
                 AUTO_DECRYPT: true,
-                PRESERVE_MEET_LINKS: true,
                 SHOW_NOTIFICATIONS: true,
             }
         };
@@ -27,7 +26,8 @@ class PopupManager {
             this.setupEventListeners();
             
             if (window.RELY_CONFIG.ENV === 'development') {
-                document.getElementById('devPanel').style.display = 'block';
+                const devPanel = document.getElementById('devPanel');
+                if (devPanel) devPanel.style.display = 'block';
             }
         } catch (error) {
             this.showNotification('Failed to initialize extension', 'error');
@@ -42,13 +42,18 @@ class PopupManager {
             ]);
             this.encryptionKey = result[this.config.STORAGE_KEYS.ENCRYPTION_KEY] || '';
             this.settings = result[this.config.STORAGE_KEYS.SETTINGS] || this.config.DEFAULT_SETTINGS;
-            
-            document.getElementById('encryptionKey').value = this.encryptionKey;
-            document.getElementById('autoEncrypt').checked = this.settings.AUTO_ENCRYPT;
-            document.getElementById('autoDecrypt').checked = this.settings.AUTO_DECRYPT;
-            document.getElementById('preserveMeetLinks').checked = this.settings.PRESERVE_MEET_LINKS;
-            document.getElementById('showNotifications').checked = this.settings.SHOW_NOTIFICATIONS;
-            document.getElementById('debugMode').checked = this.settings.DEBUG_ENABLED;
+
+            const encryptionKey = document.getElementById('encryptionKey');
+            if (encryptionKey) encryptionKey.value = this.encryptionKey;
+
+            const autoDecrypt = document.getElementById('autoDecrypt');
+            if (autoDecrypt) autoDecrypt.checked = this.settings.AUTO_DECRYPT;
+
+            const showNotifications = document.getElementById('showNotifications');
+            if (showNotifications) showNotifications.checked = this.settings.SHOW_NOTIFICATIONS;
+
+            const debugMode = document.getElementById('debugMode');
+            if (debugMode) debugMode.checked = this.settings.DEBUG_ENABLED;
         } catch (error) {
             console.error('Error loading settings:', error);
         }
@@ -57,10 +62,11 @@ class PopupManager {
     async loadStats() {
         try {
             const result = await chrome.storage.sync.get(this.config.STORAGE_KEYS.STATS);
-            const stats = result[this.config.STORAGE_KEYS.STATS] || { encrypted: 0, decrypted: 0, errors: 0 };
-            document.getElementById('emailsEncrypted').textContent = stats.encrypted;
-            document.getElementById('emailsDecrypted').textContent = stats.decrypted;
-            document.getElementById('errorsEncountered').textContent = stats.errors;
+            const stats = result[this.config.STORAGE_KEYS.STATS] || { encrypted: 0, decrypted: 0 };
+            const emailsEncrypted = document.getElementById('emailsEncrypted');
+            if (emailsEncrypted) emailsEncrypted.textContent = stats.encrypted;
+            const emailsDecrypted = document.getElementById('emailsDecrypted');
+            if (emailsDecrypted) emailsDecrypted.textContent = stats.decrypted;
         } catch (error) {
             console.error('Error loading stats:', error);
         }
@@ -69,22 +75,33 @@ class PopupManager {
     async checkStatus() {
         try {
             const tabs = await chrome.tabs.query({ url: 'https://mail.google.com/*' });
-            document.getElementById('status').textContent = tabs.length > 0 ? 'Active' : 'Inactive';
+            const status = document.getElementById('status');
+            if (status) status.textContent = tabs.length > 0 ? 'Active' : 'Inactive';
         } catch (error) {
-            document.getElementById('status').textContent = 'Error checking status';
+            const status = document.getElementById('status');
+            if (status) status.textContent = 'Error checking status';
         }
     }
     
     setupEventListeners() {
-        document.getElementById('generateKey').addEventListener('click', () => this.generateKey());
-        document.getElementById('saveKey').addEventListener('click', () => this.saveKey());
-        document.getElementById('saveSettings').addEventListener('click', () => this.saveSettings());
-        document.getElementById('encryptBtn').addEventListener('click', () => this.testEncrypt());
-        document.getElementById('decryptBtn').addEventListener('click', () => this.testDecrypt());
-        document.getElementById('copyResult').addEventListener('click', () => this.copyResult());
-        document.getElementById('previewResult').addEventListener('click', () => this.previewResult());
-        document.getElementById('debugMode').addEventListener('change', () => this.saveSettings());
-        document.getElementById('scanAndDecryptBtn').addEventListener('click', async () => {
+        const generateKey = document.getElementById('generateKey');
+        if (generateKey) generateKey.addEventListener('click', () => this.generateKey());
+        const saveKey = document.getElementById('saveKey');
+        if (saveKey) saveKey.addEventListener('click', () => this.saveKey());
+        const saveSettings = document.getElementById('saveSettings');
+        if (saveSettings) saveSettings.addEventListener('click', () => this.saveSettings());
+        const encryptBtn = document.getElementById('encryptBtn');
+        if (encryptBtn) encryptBtn.addEventListener('click', () => this.testEncrypt());
+        const decryptBtn = document.getElementById('decryptBtn');
+        if (decryptBtn) decryptBtn.addEventListener('click', () => this.testDecrypt());
+        const copyResult = document.getElementById('copyResult');
+        if (copyResult) copyResult.addEventListener('click', () => this.copyResult());
+        const previewResult = document.getElementById('previewResult');
+        if (previewResult) previewResult.addEventListener('click', () => this.previewResult());
+        const debugMode = document.getElementById('debugMode');
+        if (debugMode) debugMode.addEventListener('change', () => this.saveSettings());
+        const scanAndDecryptBtn = document.getElementById('scanAndDecryptBtn');
+        if (scanAndDecryptBtn) scanAndDecryptBtn.addEventListener('click', async () => {
             // Send a message to the content script to scan and decrypt
             chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
                 chrome.tabs.sendMessage(tabs[0].id, { type: 'SCAN_AND_DECRYPT' });
@@ -96,7 +113,8 @@ class PopupManager {
         try {
             const key = crypto.getRandomValues(new Uint8Array(32));
             const hexKey = Array.from(key).map(b => b.toString(16).padStart(2, '0')).join('');
-            document.getElementById('encryptionKey').value = hexKey;
+            const encryptionKey = document.getElementById('encryptionKey');
+            if (encryptionKey) encryptionKey.value = hexKey;
         } catch (error) {
             console.error('Error generating key:', error);
             this.showNotification('Failed to generate key', 'error');
@@ -105,7 +123,8 @@ class PopupManager {
     
     async saveKey() {
         try {
-            const key = document.getElementById('encryptionKey').value.trim();
+            const encryptionKey = document.getElementById('encryptionKey');
+            const key = encryptionKey ? encryptionKey.value.trim() : '';
             if (!key.match(/^[0-9a-fA-F]{64}$/)) {
                 this.showNotification('Invalid key: Must be a 64-character hex string', 'error');
                 return;
@@ -121,15 +140,14 @@ class PopupManager {
     
     async saveSettings() {
         try {
-            const settings = {
-                AUTO_ENCRYPT: document.getElementById('autoEncrypt').checked,
-                AUTO_DECRYPT: document.getElementById('autoDecrypt').checked,
-                PRESERVE_MEET_LINKS: document.getElementById('preserveMeetLinks').checked,
-                SHOW_NOTIFICATIONS: document.getElementById('showNotifications').checked,
-                DEBUG_ENABLED: document.getElementById('debugMode').checked
-            };
-            await chrome.storage.sync.set({ [this.config.STORAGE_KEYS.SETTINGS]: settings });
-            this.settings = settings;
+            // Only update settings if the elements exist
+            const autoDecrypt = document.getElementById('autoDecrypt');
+            if (autoDecrypt) this.settings.AUTO_DECRYPT = autoDecrypt.checked;
+            const showNotifications = document.getElementById('showNotifications');
+            if (showNotifications) this.settings.SHOW_NOTIFICATIONS = showNotifications.checked;
+            const debugMode = document.getElementById('debugMode');
+            if (debugMode) this.settings.DEBUG_ENABLED = debugMode.checked;
+            await chrome.storage.sync.set({ [this.config.STORAGE_KEYS.SETTINGS]: this.settings });
             this.showNotification('Settings saved successfully', 'success');
         } catch (error) {
             console.error('Error saving settings:', error);
@@ -197,5 +215,26 @@ class PopupManager {
         setTimeout(() => notification.style.display = 'none', 3000);
     }
 }
+
+// Add enableEncryption toggle logic outside the class
+const enableEncryptionCheckbox = document.getElementById('enableEncryption');
+// Load setting
+chrome.storage.sync.get(['enableEncryption'], (result) => {
+    if (enableEncryptionCheckbox) enableEncryptionCheckbox.checked = result.enableEncryption !== false;
+});
+enableEncryptionCheckbox && enableEncryptionCheckbox.addEventListener('change', (e) => {
+    if (!e.target.checked) {
+        const proceed = confirm(
+            "⚠️ WARNING: Disabling encryption will allow unprotected emails to be sent.\n\n" +
+            "This action may violate your organization's security policy and could expose sensitive data.\n\n" +
+            "Proceed only if you understand the risks."
+        );
+        if (!proceed) {
+            enableEncryptionCheckbox.checked = true;
+            return;
+        }
+    }
+    chrome.storage.sync.set({ enableEncryption: enableEncryptionCheckbox.checked });
+});
 
 new PopupManager();

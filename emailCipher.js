@@ -115,15 +115,17 @@ if (!window.EmailCipher) {
         createEncryptedEmailHtml(encryptedContent, preservedLinks) {
             // User-friendly explanation
             let html = `<div style="font-family: Arial, sans-serif; color: #444; margin-bottom: 12px;">This message is encrypted with Rely. To read it, use the Rely extension.</div>`;
-            // Marker block (inside <pre> for formatting)
-            html += `<pre style="background: #f8f9fa; border: 1px solid #1a73e8; border-radius: 6px; padding: 15px; font-family: monospace; font-size: 14px; color: #222;">
------BEGIN RELY ENCRYPTED MESSAGE-----\n${encryptedContent}\n-----END RELY ENCRYPTED MESSAGE-----
-`;
+            // Marker block with each part in its own element, encrypted content as a single line (no line breaks)
+            html += `<div style="background: #f8f9fa; border: 1px solid #1a73e8; border-radius: 6px; padding: 15px; font-family: monospace; font-size: 14px; color: #222;">
+<div>-----BEGIN RELY ENCRYPTED MESSAGE-----</div>`;
+            html += `<div class="rely-encrypted-content" style="word-break:break-all;">${encryptedContent.replace(/\s+/g, '')}</div>`;
+            html += `<div>-----END RELY ENCRYPTED MESSAGE-----</div>`;
             if (preservedLinks.length > 0) {
-                html += `\n\nGoogle Meet Links:\n`;
-                html += preservedLinks.map(link => `${link}`).join('\n');
+                html += `<div style="margin-top:10px;">Google Meet Links:<br>`;
+                html += preservedLinks.map(link => `${link}`).join('<br>');
+                html += `</div>`;
             }
-            html += `</pre>`;
+            html += `</div>`;
             return html;
         }
         
@@ -136,78 +138,153 @@ if (!window.EmailCipher) {
         }
         
         async processEmailContent(emailElement) {
+            // Always add decrypt button if marker is present
+            this.addDecryptButtonToEmail(emailElement);
             if (!this.settings.AUTO_DECRYPT) return;
+
+            const messageId = emailElement.getAttribute('data-message-id');
+            if (!messageId || this.processedEmails.has(messageId)) return;
+            
+            let bodyNode = emailElement.querySelector('div[dir="ltr"], .a3s, .ii, .adn') || emailElement;
+            let html = bodyNode.innerHTML;
+
+            // Only auto-decrypt if not already decrypted (look for our indicator)
+            if (bodyNode.querySelector('.rely-decrypted-indicator')) return;
+
+            // Try to find encrypted content in <div class="rely-encrypted-content"> or <pre>
+            let encryptedText = null;
+            let encryptedDiv = bodyNode.querySelector('.rely-encrypted-content');
+            if (encryptedDiv) {
+                encryptedText = encryptedDiv.textContent.replace(/\s+/g, '').replace(/\n/g, '').replace(/<br\s*\/?>(?=\n|$)/gi, '');
+            }
+            if (!encryptedText) {
+                const pre = bodyNode.querySelector('pre');
+                if (pre) {
+                    let raw = '';
+                    pre.childNodes.forEach(node => {
+                        if (node.nodeType === Node.TEXT_NODE) raw += node.textContent;
+                        if (node.nodeType === Node.ELEMENT_NODE && node.tagName === 'BR') raw += '';
+                    });
+                    encryptedText = raw.replace(/\s+/g, '').replace(/\n/g, '');
+                }
+            }
+            if (!encryptedText) {
+                // Fallback: Try regex on HTML for BEGIN/END block
+                const markerRegex = /<div>-----BEGIN RELY ENCRYPTED MESSAGE-----<\/div>\s*<div class=\"rely-encrypted-content\">([A-Za-z0-9+/=:]+)<\/div>\s*<div>-----END RELY ENCRYPTED MESSAGE-----<\/div>/;
+                const match = html.match(markerRegex);
+                if (match) {
+                    encryptedText = match[1].replace(/\s+/g, '').replace(/\n/g, '');
+                }
+            }
+            if (!encryptedText) return; // No encrypted content, do nothing
             try {
-                const messageId = emailElement.getAttribute('data-message-id');
-                if (!messageId || this.processedEmails.has(messageId)) return;
-                this.processedEmails.add(messageId);
-                
-                const content = emailElement.innerHTML;
-                if (!content.includes(this.contentManager.config.SETTINGS.ENCRYPTION_MARKER)) return;
-                
-                const encryptedMatch = content.match(/<div[^>]*font-family:\s*monospace[^>]*>([^<]+)<\/div>/i);
-                if (!encryptedMatch) return;
-                
-                const encryptedText = encryptedMatch[1].trim();
                 const decryptedContent = await window.relyCipher.decryptText(encryptedText, this.encryptionKey);
                 if (decryptedContent) {
-                    this.replaceEmailWithDecrypted(emailElement, decryptedContent);
-                    this.contentManager.showNotification('Email decrypted successfully', 'success');
+                    // Emoji/image URL and linkify helpers
+                    function removeEmojiImgUrls(text) {
+                        return text.replace(/https?:\/\/fonts\.gstatic\.com\/s\/e\/notoemoji\/[^\"]+\" loading=\"lazy\">/g, '').replace(/https?:\/\/fonts\.gstatic\.com\/s\/e\/notoemoji\/[^\"]+/g, '');
+                    }
+                    function smartLinkify(text) {
+                        text = text.replace(/(https?:\/\/[\w\-._~:/?#[\]@!$&'()*+,;=%]+)"?>?([\w\-.]+\.[a-z]{2,})(?![\w\-.])/gi, (m, url, label) => `<a href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>`);
+                        return text.replace(/(^|\s)(https?:\/\/[\w\-._~:/?#[\]@!$&'()*+,;=%]+)/gi, (m, space, url) => {
+                            if (/href=["']?${url}["']?/.test(text)) return m;
+                            return `${space}<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`;
+                        });
+                    }
+                    let cleaned = removeEmojiImgUrls(decryptedContent);
+                    let htmlWithLinks = smartLinkify(cleaned);
+                    if (window.console) console.log('[RelyHealth Debug] Gmail decrypted output:', htmlWithLinks);
+                    // Only replace the encrypted block, not the whole body
+                    if (encryptedDiv) {
+                        encryptedDiv.innerHTML = htmlWithLinks;
+                        const indicator = document.createElement('div');
+                        indicator.className = 'rely-decrypted-indicator';
+                        indicator.style = 'color:#28a745;font-size:12px;margin-top:8px;';
+                        indicator.textContent = '🔓 Decrypted';
+                        encryptedDiv.parentElement.insertBefore(indicator, encryptedDiv.nextSibling);
+                    } else if (pre) {
+                        pre.innerHTML = htmlWithLinks;
+                        const indicator = document.createElement('div');
+                        indicator.className = 'rely-decrypted-indicator';
+                        indicator.style = 'color:#28a745;font-size:12px;margin-top:8px;';
+                        indicator.textContent = '🔓 Decrypted';
+                        pre.parentElement.insertBefore(indicator, pre.nextSibling);
+                    }
+                    this.contentManager.showNotification('Email auto-decrypted successfully', 'success');
                     chrome.runtime.sendMessage({ type: 'DECRYPT_SUCCESS' });
+                    this.addDecryptButtonToEmail(emailElement);
                 }
             } catch (error) {
-                this.contentManager.log('Error processing email content:', error);
-                this.contentManager.showNotification('Failed to decrypt email', 'error');
-                chrome.runtime.sendMessage({ type: 'OPERATION_FAILED' });
+                this.contentManager.showNotification('Auto-decryption failed: ' + error.message, 'error');
+                this.contentManager.log('Auto-decryption failed:', error);
             }
         }
         
         // Improved: Only add decrypt button to the main message action bar, and only if encrypted content is present
         addDecryptButtonToEmail(emailElement) {
-            // Only target the main message, not reply/forward toolbars
             // Look for the main message body (where [ENCRYPTED] marker is present)
             const messageBody = emailElement.querySelector('div[dir="ltr"], .a3s');
             if (!messageBody) return;
             const content = messageBody.innerHTML;
-            if (!content.includes(this.contentManager.config.SETTINGS.ENCRYPTION_MARKER)) return;
-            // Only add to the main message's action bar (not every toolbar)
-            // Find the closest action bar above the message body
+            if (!content.includes('-----BEGIN RELY ENCRYPTED MESSAGE-----')) return;
+            // Try to find the bottom toolbar (with Reply/Forward)
             let actionButtonsContainer = null;
+            // Gmail's bottom toolbar often has role="toolbar" and is after the message body
             let node = messageBody;
             while (node && !actionButtonsContainer) {
+                // Look for a toolbar sibling after the message body
+                let sibling = node.nextElementSibling;
+                while (sibling) {
+                    if (sibling.getAttribute && sibling.getAttribute('role') === 'toolbar') {
+                        actionButtonsContainer = sibling;
+                        break;
+                    }
+                    sibling = sibling.nextElementSibling;
+                }
                 node = node.parentElement;
-                if (!node) break;
-                actionButtonsContainer = node.querySelector('[role="toolbar"]');
+            }
+            // Fallback: try the old method (above the message body)
+            if (!actionButtonsContainer) {
+                node = messageBody;
+                while (node && !actionButtonsContainer) {
+                    node = node.parentElement;
+                    if (!node) break;
+                    actionButtonsContainer = node.querySelector('[role="toolbar"]');
+                }
             }
             if (!actionButtonsContainer) return;
             // Prevent multiple decrypt buttons
             if (actionButtonsContainer.querySelector('[data-rely-decrypt-button]')) return;
             // Create decrypt button
             const decryptButton = document.createElement('span');
-            decryptButton.setAttribute('role', 'link');
+            decryptButton.setAttribute('role', 'button');
             decryptButton.setAttribute('tabindex', '0');
             decryptButton.setAttribute('data-rely-decrypt-button', 'true');
-            decryptButton.className = 'ams bkG';
+            decryptButton.className = 'rely-decrypt-btn';
             decryptButton.style.cssText = `
                 cursor: pointer;
-                color: #1a73e8;
+                color: #fff;
+                background: #1a73e8;
                 margin-left: 8px;
-                padding: 4px 8px;
+                padding: 4px 14px;
                 border-radius: 4px;
                 transition: background-color 0.2s;
-                font-size: 14px;
+                font-size: 15px;
                 font-weight: 500;
                 text-decoration: none;
                 display: inline-flex;
                 align-items: center;
-                gap: 4px;
+                gap: 6px;
+                border: none;
+                outline: none;
+                box-shadow: 0 1px 2px rgba(60,64,67,.08);
             `;
-            decryptButton.innerHTML = '🔓 Decrypt';
+            decryptButton.innerHTML = '<span style="font-size:18px;">&#128274;</span> Decrypt';
             decryptButton.addEventListener('mouseenter', () => {
-                decryptButton.style.backgroundColor = '#f1f3f4';
+                decryptButton.style.backgroundColor = '#155ab6';
             });
             decryptButton.addEventListener('mouseleave', () => {
-                decryptButton.style.backgroundColor = '';
+                decryptButton.style.backgroundColor = '#1a73e8';
             });
             decryptButton.addEventListener('click', async (event) => {
                 event.preventDefault();
@@ -218,52 +295,93 @@ if (!window.EmailCipher) {
                     this.contentManager.log('Error in decrypt button click:', error);
                 }
             });
-            // Insert at the end of the action bar
+            // Insert at the end of the bottom toolbar
             actionButtonsContainer.appendChild(decryptButton);
         }
         
         // Update decryption logic to robustly find and replace the marker block
         async decryptEmailWithButton(emailElement, decryptButton) {
-            // Search the entire email body for the marker block
             let bodyNode = emailElement.querySelector('div[dir="ltr"], .a3s, .ii, .adn');
             if (!bodyNode) bodyNode = emailElement;
             let html = bodyNode.innerHTML;
-            // Regex to match the marker block (tolerant of whitespace/line breaks)
-            const markerRegex = /-----BEGIN RELY ENCRYPTED MESSAGE-----[\s\S]*?([A-Za-z0-9+/=:\n\r\-]+)[\s\S]*?-----END RELY ENCRYPTED MESSAGE-----/;
-            const match = html.match(markerRegex);
-            let encryptedText = null;
-            if (match) {
-                encryptedText = match[1].replace(/<br\s*\/?>/gi, '').replace(/\r?\n/g, '').trim();
+            if (bodyNode.querySelector('.rely-decrypted-indicator')) {
+                this.contentManager.showNotification('Already decrypted.', 'info');
+                return;
             }
-            // Fallback: look for visible encrypted block (legacy)
+            let encryptedText = null;
+            let encryptedDiv = bodyNode.querySelector('.rely-encrypted-content');
+            if (encryptedDiv) {
+                encryptedText = encryptedDiv.textContent.replace(/\s+/g, '').replace(/\n/g, '').replace(/<br\s*\/?>(?=\n|$)/gi, '');
+            }
             if (!encryptedText) {
-                const encryptedMatch = html.match(/<div[^>]*font-family:\s*monospace[^>]*>([^<]+)<\/div>/i);
-                if (encryptedMatch) {
-                    encryptedText = encryptedMatch[1].trim();
+                const pre = bodyNode.querySelector('pre');
+                if (pre) {
+                    let raw = '';
+                    pre.childNodes.forEach(node => {
+                        if (node.nodeType === Node.TEXT_NODE) raw += node.textContent;
+                        if (node.nodeType === Node.ELEMENT_NODE && node.tagName === 'BR') raw += '';
+                    });
+                    encryptedText = raw.replace(/\s+/g, '').replace(/\n/g, '');
                 }
             }
             if (!encryptedText) {
-                this.contentManager.showNotification('No encrypted content found', 'error');
+                const markerRegex = /<div>-----BEGIN RELY ENCRYPTED MESSAGE-----<\/div>\s*<div class=\"rely-encrypted-content\">([A-Za-z0-9+/=:]+)<\/div>\s*<div>-----END RELY ENCRYPTED MESSAGE-----<\/div>/;
+                const match = html.match(markerRegex);
+                if (match) {
+                    encryptedText = match[1].replace(/\s+/g, '').replace(/\n/g, '');
+                }
+            }
+            if (!encryptedText) {
+                this.contentManager.showNotification('No encrypted content found for manual decryption.', 'error');
                 return;
             }
             try {
-                // Try with current key first
                 const decryptedContent = await window.relyCipher.decryptText(encryptedText, this.encryptionKey);
                 if (decryptedContent) {
-                    // Replace the marker block with the decrypted content
-                    if (match) {
-                        bodyNode.innerHTML = html.replace(markerRegex, decryptedContent);
-                    } else {
-                        this.replaceEmailWithDecrypted(emailElement, decryptedContent);
+                    function removeEmojiImgUrls(text) {
+                        return text.replace(/https?:\/\/fonts\.gstatic\.com\/s\/e\/notoemoji\/[^\"]+\" loading=\"lazy\">/g, '').replace(/https?:\/\/fonts\.gstatic\.com\/s\/e\/notoemoji\/[^\"]+/g, '');
                     }
-                    this.contentManager.showNotification('Email decrypted successfully', 'success');
+                    function smartLinkify(text) {
+                        text = text.replace(/(https?:\/\/[\w\-._~:/?#[\]@!$&'()*+,;=%]+)"?>?([\w\-.]+\.[a-z]{2,})(?![\w\-.])/gi, (m, url, label) => `<a href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>`);
+                        return text.replace(/(^|\s)(https?:\/\/[\w\-._~:/?#[\]@!$&'()*+,;=%]+)/gi, (m, space, url) => {
+                            if (/href=["']?${url}["']?/.test(text)) return m;
+                            return `${space}<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`;
+                        });
+                    }
+                    let cleaned = removeEmojiImgUrls(decryptedContent);
+                    let htmlWithLinks = smartLinkify(cleaned);
+                    if (window.console) console.log('[RelyHealth Debug] Gmail decrypted output:', htmlWithLinks);
+                    const newTab = window.open('about:blank', '_blank');
+                    if (newTab) {
+                        let subject = '';
+                        let sender = '';
+                        let date = '';
+                        const subjectNode = document.querySelector('h2.hP, .ha .hP');
+                        if (subjectNode) subject = subjectNode.textContent;
+                        const senderNode = document.querySelector('.gD, .go');
+                        if (senderNode) sender = senderNode.textContent;
+                        const dateNode = document.querySelector('.g3, .gH .gK');
+                        if (dateNode) date = dateNode.textContent;
+                        newTab.document.write(`<!DOCTYPE html><html><head><title>Decrypted Email - Rely</title><meta charset='utf-8'><style>body{font-family:sans-serif;background:#f6f8fa;margin:0;padding:0;} .container{max-width:700px;margin:40px auto;background:#fff;border-radius:10px;box-shadow:0 2px 12px rgba(0,0,0,0.08);padding:32px;} .logo{text-align:center;margin-bottom:24px;} .logo img{width:64px;} .meta{margin-bottom:24px;} .meta strong{display:inline-block;width:80px;} .decrypted{background:#f8f9fa;border:1px solid #1a73e8;border-radius:6px;padding:18px;font-size:16px;}</style></head><body><div class='container'><div class='logo'><img src='https://www.gstatic.com/images/branding/product/1x/rely_2020q4_48dp.png' alt='Rely Logo'/></div><div class='meta'><div><strong>Subject:</strong> ${subject || '(unknown)'}</div><div><strong>From:</strong> ${sender || '(unknown)'}</div><div><strong>Date:</strong> ${date || '(unknown)'}</div></div><div class='decrypted'>${htmlWithLinks}</div></div></body></html>`);
+                        newTab.document.close();
+                    } else {
+                        this.contentManager.showNotification('Popup blocked. Please allow popups for this site.', 'error');
+                    }
+                    this.contentManager.showNotification('Email decrypted in new tab', 'success');
                     chrome.runtime.sendMessage({ type: 'DECRYPT_SUCCESS' });
+                    if (encryptedDiv) {
+                        const indicator = document.createElement('div');
+                        indicator.className = 'rely-decrypted-indicator';
+                        indicator.style = 'color:#28a745;font-size:12px;margin-top:8px;';
+                        indicator.textContent = '🔓 Decrypted';
+                        encryptedDiv.parentElement.insertBefore(indicator, encryptedDiv.nextSibling);
+                    }
                     return;
                 }
             } catch (error) {
+                this.contentManager.showNotification('Manual decryption failed: ' + error.message, 'error');
                 this.contentManager.log('Decryption failed with current key:', error);
             }
-            // If current key doesn't work, show custom key input
             this.showCustomKeyInput(emailElement, encryptedText, decryptButton);
         }
         
